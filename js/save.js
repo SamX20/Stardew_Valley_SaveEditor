@@ -6,6 +6,8 @@
   const XSI = 'http://www.w3.org/2001/XMLSchema-instance';
   const XP = [100, 380, 770, 1300, 2150, 3300, 4800, 6900, 10000, 15000];
   const SEASONS = ['spring', 'summer', 'fall', 'winter'];
+  // Data/Fences health by item id (wood and gate checked against fences the game built)
+  const FENCE_HEALTH = { 322: 28, 323: 60, 324: 125, 298: 280, 325: 100 };
   const CHEST_COLORS = [[0,0,0],[85,85,255],[119,191,255],[0,170,170],[0,234,175],[0,170,0],[159,236,0],[255,234,18],[255,167,18],[255,105,18],[255,0,0],[135,0,35],[255,173,199],[255,117,195],[172,0,198],[143,0,255],[89,11,142],[64,64,64],[100,100,100],[200,200,200],[254,254,254]];
 
   let env = { DOMParser: null, XMLSerializer: null, templates: null, world: null, items: null };
@@ -358,9 +360,38 @@
       const tl = kid(el, 'tileLocation'); if (tl) { setTxt(tl, 'X', x); setTxt(tl, 'Y', y); }
       const bb = kid(el, 'boundingBox'); if (bb) { setTxt(bb, 'X', x * 64); setTxt(bb, 'Y', y * 64); setTxt(bb, 'Width', 64); setTxt(bb, 'Height', 64); const l = kid(bb, 'Location'); if (l) { setTxt(l, 'X', x * 64); setTxt(l, 'Y', y * 64); } const s = kid(bb, 'Size'); if (s) { setTxt(s, 'X', 64); setTxt(s, 'Y', 64); } }
       if (kid(el, 'hasBeenInInventory')) setTxt(el, 'hasBeenInInventory', 'true');
+      if (isFenceObj(el)) this.makeFence(el);
       const item = this.doc.createElement('item'); const k = this.doc.createElement('key'); const v = this.doc.createElement('Vector2');
       setTxt(v, 'X', x); setTxt(v, 'Y', y); k.appendChild(v); item.appendChild(k); const val = this.doc.createElement('value'); val.appendChild(el); item.appendChild(val);
       kid(loc, 'objects').appendChild(item); this.touch(); return item;
+    }
+    // a placed fence must be <Object xsi:type="Fence"> like new Fence(tile, id, isGate) makes it; a plain Object shows as an icon
+    makeFence(el) {
+      const id = txt(el, 'itemId'); const gate = id === '325';
+      let hp = FENCE_HEALTH[id] + (gate ? 0 : Math.floor(Math.random() * 201 - 100) / 100);
+      hp *= 2;
+      el.setAttribute('xsi:type', 'Fence');
+      setTxt(el, 'price', 1);
+      setTxt(el, 'health', gate ? hp * 2 : hp); setTxt(el, 'maxHealth', hp);
+      if (!kid(el, 'whichType')) { const w = this.doc.createElement('whichType'); w.setAttribute('xsi:nil', 'true'); el.appendChild(w); }
+      setTxt(el, 'gatePosition', 0); setTxt(el, 'gateMotion', 0); setTxt(el, 'isGate', gate);
+      this.touch();
+    }
+    brokenFences(loc) { return kids(kid(loc || this.farm(), 'objects'), 'item').map(it => path(it, 'value', 'Object')).filter(o => o && !xtype(o) && isFenceObj(o)); }
+    fixFences(loc) { const list = this.brokenFences(loc); for (const o of list) this.makeFence(o); return list.length; }
+    // the game also needs the tile under each door clear (Data/Buildings AdditionalPlacementTiles + humanDoor check in buildStructure)
+    doorCheck(loc, b, x, y, ignore) {
+      const W = env.world.grid; const occ = this.occupancy(loc, ignore);
+      for (const [tag, what] of [['animalDoor', 'باب الحيوانات'], ['humanDoor', 'الباب']]) {
+        const d = kid(b, tag); if (!d || num(d, 'X', -1) < 0) continue;
+        const tx = x + num(d, 'X'), ty = y + num(d, 'Y') + 1;
+        if (tx < 0 || ty < 0 || tx >= W.w || ty >= W.h) return `قدام ${what} برّا الخريطة`;
+        const idx = ty * W.w + tx;
+        if (W.water[idx] === '1' || W.blocked[idx] === '1') return `قدام ${what} مسكّر`;
+        const hit = (occ.get(tx + ',' + ty) || []).find(e => !(e.kind === 'tf' && !['Tree', 'FruitTree'].includes(e.type)));
+        if (hit) return `في إشي قدام ${what} (لازم المربع اللي تحته يكون فاضي)`;
+      }
+      return null;
     }
     makeHoeDirt(x, y, seedId, state) {
       const d = this.doc; const item = d.createElement('item'); const k = d.createElement('key'); const v = d.createElement('Vector2');
@@ -398,6 +429,7 @@
     }
     makeCropReady(tfEl) { const ci = this.cropInfo(tfEl); if (!ci) return; setTxt(ci.el, 'currentPhase', ci.phases.length - 1); setTxt(ci.el, 'dayOfCurrentPhase', 0); this.touch(); }
   }
+  function isFenceObj(o) { return txt(o, 'bigCraftable') !== 'true' && FENCE_HEALTH[txt(o, 'itemId')] != null; }
   function norm(x) { return x.replace(/<([A-Za-z_][\w.\-]*)((?:\s[^<>]*?)?)\/>/g, (m, t, a) => '<' + t + (a ? a.replace(/\s+$/, '') : '') + ' />'); }
   function parseColor(s) {
     if (!s) return null; s = s.trim();

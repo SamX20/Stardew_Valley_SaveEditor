@@ -152,7 +152,7 @@
     const s = App.st.save; const loc = farm(); const ignore = M.sel.map(e => e.el);
     for (const e of M.sel) {
       const needDig = e.kind === 'tf' && e.type === 'HoeDirt';
-      const err = s.canPlace(loc, e.x + dx, e.y + dy, e.kind === 'bld' ? e.w : 1, e.kind === 'bld' ? e.h : 1, ignore, needDig);
+      const err = s.canPlace(loc, e.x + dx, e.y + dy, e.kind === 'bld' ? e.w : 1, e.kind === 'bld' ? e.h : 1, ignore, needDig) || (e.kind === 'bld' ? s.doorCheck(loc, e.el, e.x + dx, e.y + dy, ignore) : null);
       if (err) return err;
     }
     // dirt + object on same tile is allowed for sprinklers? keep simple: forbid overlap among moved items themselves too
@@ -250,8 +250,10 @@
   App.pages.map = (pg) => {
     const s = App.st.save; refresh(); M.sel = [];
     const tools = [['select', '✋ حدّد وانقل', 'اضغط واسحب. Shift للإضافة. اسحب على فراغ لتحديد مجموعة.'], ['place', '📦 حط غرض', 'رشاش، فزاعة، صندوق، آلة…'], ['plant', '🌱 ازرع', 'اختار بذرة وامسح فوق الأرض'], ['till', '⛏ احرث', 'يعمل أرض محروثة'], ['water', '💧 اسقي/نشّف', 'اضغط على الأرض المحروثة'], ['ready', '✨ جهّز للحصاد', 'بخلي النبتة جاهزة'], ['delete', '🗑 احذف', 'يحذف الشي اللي تحت الماوس']];
-    const presetBtns = [['(O)621', 'رشاش جيد'], ['(O)599', 'رشاش'], ['(O)645', 'رشاش إيريديوم'], ['(BC)8', 'فزاعة'], ['CHEST:130', 'صندوق']].map(([q, n]) => h('button', { class: 'chip', onclick: () => { M.placeQid = q; M.tool = 'place'; App.render(); } }, q.startsWith('CHEST') ? App.icon('(BC)130', 18) : App.icon(q, 18), n));
+    const broken = s.brokenFences(farm()).length;
+    const presetBtns = [['(O)621', 'رشاش جيد'], ['(O)599', 'رشاش'], ['(O)645', 'رشاش إيريديوم'], ['(BC)8', 'فزاعة'], ['CHEST:130', 'صندوق'], ['(O)322', 'سياج خشب'], ['(O)325', 'بوابة']].map(([q, n]) => h('button', { class: 'chip', onclick: () => { M.placeQid = q; M.tool = 'place'; App.render(); } }, q.startsWith('CHEST') ? App.icon('(BC)130', 18) : App.icon(q, 18), n));
     const toolCol = h('div', { class: 'tools' },
+      broken ? h('div', { class: 'sel-panel' }, h('b', null, `⚠️ في ${broken} قطعة سياج/بوابة محطوطة غلط`), h('div', { class: 'muted' }, 'باللعبة بتطلع أيقونة وبتسكّر الطريق بدل ما تتوصل ببعض.'), h('button', { class: 'btn btn-small btn-blue', style: { marginTop: '6px' }, onclick: () => { App.change(() => s.fixFences(farm())); App.toast('صلّحت السياج ✓ احفظ التعديلات'); App.render(); } }, '🔧 صلّحهم')) : null,
       tools.map(([id, label, tip]) => h('button', { class: 'toolbtn' + (M.tool === id ? ' active' : ''), title: tip, onclick: () => { M.tool = id; App.render(); } }, label)),
       M.tool === 'place' ? h('div', { class: 'sel-panel' }, h('b', null, 'الغرض: '), M.placeQid ? h('span', { class: 'row', style: { gap: '6px', display: 'inline-flex' } }, App.icon(M.placeQid.startsWith('CHEST') ? '(BC)130' : M.placeQid, 24), h('span', { class: 'en' }, M.placeQid.startsWith('CHEST') ? 'Chest' : App.itemName(M.placeQid))) : '—', h('div', { class: 'chips', style: { marginTop: '6px' } }, presetBtns), h('button', { class: 'btn btn-small', style: { marginTop: '6px' }, onclick: chooseObj }, 'غرض ثاني…')) : null,
       M.tool === 'plant' ? h('div', { class: 'sel-panel' }, h('b', null, 'البذرة: '), M.seedQid ? h('span', { class: 'row', style: { gap: '6px', display: 'inline-flex' } }, App.icon(M.seedQid, 24), h('span', { class: 'en' }, App.itemName(M.seedQid))) : '—', h('button', { class: 'btn btn-small', style: { marginTop: '6px' }, onclick: chooseSeed }, 'اختار بذرة…'), h('div', { class: 'muted' }, 'بتنزرع بأول مرحلة. انتبه للموسم!')) : null,
